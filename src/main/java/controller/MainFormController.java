@@ -57,9 +57,9 @@ public class MainFormController {
             lstSelectedFiles.getItems().addAll(openedFile);
         } /*else if (openedFolder != null) {
             lstSelectedFiles.getItems().add(openedFolder);
-        }*/ else{
+        } else{
             lblFileName.setText("No file selected");
-        }
+        }*/
     }
 
     public void btnBrowseOnAction(ActionEvent actionEvent) {
@@ -72,7 +72,7 @@ public class MainFormController {
 
         lblDirectoryPath.setVisible(true);
         if(saveLocation != null){
-            lblDirectoryPath.setText(saveLocation.getName());
+            lblDirectoryPath.setText(saveLocation+"/"+saveLocation.getName());
             btnCopy.setDisable(false);
         }else {
             lblDirectoryPath.setText("No folder selected");
@@ -102,10 +102,10 @@ public class MainFormController {
                             int readByte = fis.read();
                             fos.write(readByte);
                             int k = i;
-                            Platform.runLater(()->{
-                                pgbProgress.setWidth(pgbContainer.getWidth()/file.length()*k);
-                                lblProgress.setText("Progress: " + formatNumber((k/file.length())*100) + "%");
-                                lblStatus.setText(formatNumber(k / 1024.0) + "/" + formatNumber(file.length()/1024.0) + "Kb");
+                            Platform.runLater(() -> {
+                                pgbProgress.setWidth(pgbContainer.getWidth() / file.length() * k);
+                                lblProgress.setText("Progress: " + formatNumber((k * 100.0) / file.length()) + "%");
+                                lblStatus.setText(formatNumber(k / 1024.0) + "/" + formatNumber(file.length() / 1024.0) + "kb");
                             });
                         }
                         fis.close();
@@ -115,12 +115,17 @@ public class MainFormController {
                     }
                     Platform.runLater(() -> {
                         pgbProgress.setWidth(pgbContainer.getWidth());
+                        new Alert(Alert.AlertType.INFORMATION,file + " has been copied successfully.").showAndWait();
+                        pgbProgress.setWidth(0);
                         openedFile = null;
                         saveLocation = null;
                         lstSelectedFiles.getItems().clear();
                         lblFileName.setText("No file selected");
                         lblFileSize.setText("");
                         lblDirectoryPath.setText("No folder selected");
+                        lblProgress.setText("");
+                        lblStatus.setText("0.0/0.0 kb");
+                        btnCopy.setDisable(true);
                     });
                 }).start();
 
@@ -180,7 +185,7 @@ public class MainFormController {
     public String formatNumber(double input){
         NumberFormat ni = NumberFormat.getNumberInstance();
         ni.setGroupingUsed(true);
-        ni.setMinimumFractionDigits(2);
+        ni.setMinimumFractionDigits(1);
         ni.setMaximumFractionDigits(2);
         return ni.format(input);
     }

@@ -20,7 +20,7 @@ public class AppInitializer extends Application {
         Parent container = FXMLLoader.load(resource);
         Scene scene = new Scene(container);
         primaryStage.setScene(scene);
-        primaryStage.setTitle("Copy...");
+        primaryStage.setTitle("Let's copy some files!");
         primaryStage.centerOnScreen();
         primaryStage.show();
     }
