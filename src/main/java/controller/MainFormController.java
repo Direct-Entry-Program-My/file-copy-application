@@ -3,7 +3,12 @@ package controller;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
+import javafx.concurrent.Task;
+import javafx.concurrent.WorkerStateEvent;
 import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
@@ -13,7 +18,6 @@ import javafx.stage.FileChooser;
 
 import java.io.*;
 import java.text.NumberFormat;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,19 +31,18 @@ public class MainFormController {
     public Rectangle pgbContainer;
     public Rectangle pgbProgress;
     public JFXButton btnClose;
-
-    private File saveLocation, openedFolder;
-    private List<File> openedFile;
     public Label lblProgress;
     public Label lblStatus;
     public JFXListView lstSelectedFiles;
+    private File saveLocation, openedFolder;
+    private List<File> openedFile;
 
-    public void initialize(){
-        pgbContainer.setVisible(false);
+    public void initialize() {
+        /*pgbContainer.setVisible(false);
         pgbProgress.setVisible(false);
-        btnCopy.setDisable(true);
         lblProgress.setVisible(false);
-        lblStatus.setVisible(false);
+        lblStatus.setVisible(false);*/
+        btnCopy.setDisable(true);
     }
 
     public void btnOpenOnAction(ActionEvent actionEvent) {
@@ -49,11 +52,11 @@ public class MainFormController {
         fileChooser.setInitialDirectory(new File(System.getProperty("user.home")));
         fileChooser.setTitle("Select a file to copy");
         //directoryChooser.setTitle("Select a file to copy");
-        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("All files(*.*)","*.*"));
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("All files(*.*)", "*.*"));
         openedFile = fileChooser.showOpenMultipleDialog(btnBrowse.getScene().getWindow());
         //openedFolder = directoryChooser.showDialog(btnBrowse.getScene().getWindow());
 
-        if(openedFile != null){
+        if (openedFile != null) {
             lstSelectedFiles.getItems().addAll(openedFile);
         } /*else if (openedFolder != null) {
             lstSelectedFiles.getItems().add(openedFolder);
@@ -71,10 +74,10 @@ public class MainFormController {
         saveLocation = directoryChooser.showDialog(btnBrowse.getScene().getWindow());
 
         lblDirectoryPath.setVisible(true);
-        if(saveLocation != null){
-            lblDirectoryPath.setText(saveLocation+"/"+saveLocation.getName());
+        if (saveLocation != null) {
+            lblDirectoryPath.setText(saveLocation + "/" + saveLocation.getName());
             btnCopy.setDisable(false);
-        }else {
+        } else {
             lblDirectoryPath.setText("No folder selected");
         }
     }
@@ -84,50 +87,67 @@ public class MainFormController {
         if (openedFile != null) {
             for (File file : openedFile) {
                 File file1 = new File(saveLocation, file.getName());
-                if(!file.exists()){
+                if (!file.exists()) {
                     file1.createNewFile();
-                }else{
+                } else {
                     Optional<ButtonType> result = new Alert(Alert.AlertType.INFORMATION, "File already exists. Do you want to overwrite?", ButtonType.YES, ButtonType.NO).showAndWait();
-                    if(result.get() == ButtonType.NO) return;
+                    if (result.get() == ButtonType.NO) return;
                 }
-                new Thread(()->{
-                    try {
+                var task = new Task<Void>() /* class Anonymous extends Task<Void>*/ {    // <- Don't worry about this wired syntax yet
+                    @Override
+                    protected Void call() throws Exception {
                         FileInputStream fis = new FileInputStream(file);
                         FileOutputStream fos = new FileOutputStream(file1);
-                        pgbProgress.setVisible(true);
-                        pgbContainer.setVisible(true);
-                        lblStatus.setVisible(true);
-                        lblProgress.setVisible(true);
-                        for (int i = 0; i < file.length(); i++) {
-                            int readByte = fis.read();
-                            fos.write(readByte);
-                            int k = i;
-                            Platform.runLater(() -> {
-                                pgbProgress.setWidth(pgbContainer.getWidth() / file.length() * k);
-                                lblProgress.setText("Progress: " + formatNumber((k * 100.0) / file.length()) + "%");
-                                lblStatus.setText(formatNumber(k / 1024.0) + "/" + formatNumber(file.length() / 1024.0) + "kb");
-                            });
+                        BufferedInputStream bis = new BufferedInputStream(fis);
+                        BufferedOutputStream bos = new BufferedOutputStream(fos);
+
+                        long fileSize = file.length();
+                        int totalRead = 0;
+                        while (true) {
+                            byte[] buffer = new byte[1024 * 10];        // 10 Kb
+                            int read = bis.read(buffer);
+                            totalRead += read;
+                            if (read == -1) break;
+                            bos.write(buffer, 0, read);
+                            updateProgress(totalRead, fileSize);
                         }
-                        fis.close();
-                        fos.close();
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+
+                        updateProgress(fileSize, fileSize);
+
+                        bos.close();
+                        bis.close();
+
+                        return null;
                     }
-                    Platform.runLater(() -> {
+                };
+
+                task.workDoneProperty().addListener(new ChangeListener<Number>() {
+                    @Override
+                    public void changed(ObservableValue<? extends Number> observableValue, Number prevWork, Number curWork) {
+                        pgbProgress.setWidth(pgbContainer.getWidth() / task.getTotalWork() * curWork.doubleValue());
+                        lblProgress.setText("Progress: " + formatNumber(task.getProgress() * 100) + "%");
+                        lblStatus.setText(formatNumber(task.getWorkDone() / 1024.0) + " / " + formatNumber(task.getTotalWork() / 1024.0) + " kb");
+                    }
+                });
+
+                task.setOnSucceeded(new EventHandler<WorkerStateEvent>() {
+                    @Override
+                    public void handle(WorkerStateEvent workerStateEvent) {
                         pgbProgress.setWidth(pgbContainer.getWidth());
-                        new Alert(Alert.AlertType.INFORMATION,file + " has been copied successfully.").showAndWait();
-                        pgbProgress.setWidth(0);
-                        openedFile = null;
-                        saveLocation = null;
-                        lstSelectedFiles.getItems().clear();
-                        lblFileName.setText("No file selected");
-                        lblFileSize.setText("");
+                        new Alert(Alert.AlertType.INFORMATION, "File has been copied successfully").showAndWait();
                         lblDirectoryPath.setText("No folder selected");
-                        lblProgress.setText("");
-                        lblStatus.setText("0.0/0.0 kb");
+                        //lblFileName.setText("No file selected");
+                        lstSelectedFiles.getItems().clear();
                         btnCopy.setDisable(true);
-                    });
-                }).start();
+                        pgbProgress.setWidth(0);
+                        lblProgress.setText("Progress: 0%");
+                        lblProgress.setText("0 / 0 Kb");
+                        // file = null;
+                        // file1 = null;
+                    }
+                });
+
+                new Thread(task).start();
 
             }
         } /*else if (openedFolder != null) {
@@ -178,17 +198,17 @@ public class MainFormController {
                 lblDirectoryPath.setText("No folder selected");
             });
             }).start();*/
-        }
+    }
 
 
-
-    public String formatNumber(double input){
+    public String formatNumber(double input) {
         NumberFormat ni = NumberFormat.getNumberInstance();
         ni.setGroupingUsed(true);
         ni.setMinimumFractionDigits(1);
         ni.setMaximumFractionDigits(2);
         return ni.format(input);
     }
+
     public void btnCloseOnAction(ActionEvent actionEvent) {
         Platform.exit();
     }
